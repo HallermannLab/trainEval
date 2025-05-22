@@ -11,7 +11,7 @@ def trainEval():
     import matplotlib.pyplot as plt
 
     # Constants (can be adjusted)
-    A_To_pA = 1
+    pA_To_nA = 0.001
     ms_To_s = 0.001
     blank_st = -0.3 * ms_To_s
     blank_end = 1.5 * ms_To_s
@@ -27,26 +27,30 @@ def trainEval():
     zoomStart2 = 1.7  # in s
     zoomEnd2 = 1.8
 
-    time_deltaT = 0.001     # sampling interval
-
     # === CONFIGURATION ===
     import_folder = "/Users/stefanhallermann/Desktop/"
-    filename = ("25-05-20-60Hz.xlsx")
+    import_folder = "/Volumes/D/tmp/Divya"
+    #filename = ("25-05-20-60Hz.xlsx")
+    filename = ("25-05-21-ok6bPAC- 60Hz_.xlsx")
+
     export_folder = os.path.join(import_folder, "export")
     os.makedirs(export_folder, exist_ok=True)
 
     # === IMPORT DATA ===
     df = pd.read_excel(os.path.join(import_folder, filename))
     time = df.iloc[:, 0].values  # first column = time
-    time *= time_deltaT
-    traces = df.iloc[:, 1:]  # remaining columns = traces
+    time *= ms_To_s   # 2nd column = stimulation trace
+    stim_signal = df.iloc[:, 1].values
+    traces = df.iloc[:, 2:]  # remaining columns = traces (is still a data frame, maybe faster with .values, which returns a "D numpy array, without lables)
 
     # === STIMULATION DETECTION ===
+    """
     stim_file = "stimTimeMarker.xlsx"  # replace with your stim marker file
     stim_col_name = "stim"  # the column containing mostly 0s and occasional 1s
 
     stim_df = pd.read_excel(os.path.join(import_folder, stim_file))
     stim_signal = stim_df[stim_col_name].values
+    """
 
     # Assumes the stim file has the same time base as the main data
     # Find onset times: 0 -> 1 transitions
@@ -65,15 +69,33 @@ def trainEval():
 
     print("Detected stimulation times (s):", time_of_stim)
 
-    results = []
+
+
+    #results = []
+    # for collecting the results
+    n_stim = len(time_of_stim)
+    results_peak = {
+        "stimulus number": list(range(1, n_stim + 1)),
+        "stimulus time (s)": list(time_of_stim)
+    }
+    results_phasic = {
+        "stimulus number": list(range(1, n_stim + 1)),
+        "stimulus time (s)": list(time_of_stim)
+    }
+    results_tonic = {
+        "stimulus number": list(range(1, n_stim + 1)),
+        "stimulus time (s)": list(time_of_stim)
+    }
 
     for trace_name in traces.columns:
-        original_y = traces[trace_name].values
+        original_y = pA_To_nA * traces[trace_name].values
         y = original_y.copy()
 
         # Calculate trace baseline (across full trace base interval)
         trace_base_mask = (time >= trace_base_st) & (time <= trace_base_end)
         trace_base = np.mean(y[trace_base_mask])
+
+        y = y - trace_base
 
         peak_vals = []
         base_vals = []
@@ -91,12 +113,12 @@ def trainEval():
 
             # Calculate base
             base_mask = (time >= stim_time + base_st) & (time <= stim_time + base_end)
-            base_val = A_To_pA * (np.mean(y[base_mask]) - trace_base)
+            base_val = (np.mean(y[base_mask]) - trace_base)
             base_vals.append(base_val)
 
             # Calculate peak (min in peak interval)
             peak_mask = (time >= stim_time + peak_st) & (time <= stim_time + peak_end)
-            peak_val = A_To_pA * (np.min(y[peak_mask]) - trace_base)
+            peak_val = (np.min(y[peak_mask]) - trace_base)
             peak_vals.append(peak_val)
 
         # Save all three plots in one vertical layout
@@ -137,18 +159,17 @@ def trainEval():
         plt.close()
 
         # Collect results
-        for i, stim_time in enumerate(time_of_stim):
-            results.append({
-                "Trace": trace_name,
-                "Stimulus": i + 1,
-                "Time (s)": stim_time,
-                "Base (pA)": base_vals[i],
-                "Peak (pA)": peak_vals[i]
-            })
+        results_tonic[f"{trace_name}_base (nA)"] = base_vals
+        results_peak[f"{trace_name}_peak (nA)"] = peak_vals
+        results_phasic[f"{trace_name}_peak (nA)"] = np.array(peak_vals) - np.array(base_vals)
 
     # Export analysis results
-    results_df = pd.DataFrame(results)
-    results_df.to_excel(os.path.join(export_folder, "results.xlsx"), index=False)
+    tmp_df = pd.DataFrame(results_tonic)
+    tmp_df.to_excel(os.path.join(export_folder, "results_tonic.xlsx"), index=False)
+    tmp_df = pd.DataFrame(results_peak)
+    tmp_df.to_excel(os.path.join(export_folder, "results_peak.xlsx"), index=False)
+    tmp_df = pd.DataFrame(results_phasic)
+    tmp_df.to_excel(os.path.join(export_folder, "results_phasic.xlsx"), index=False)
 
 
 # Press the green button in the gutter to run the script.
