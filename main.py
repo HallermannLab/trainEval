@@ -3,12 +3,28 @@
 # Press ⌃R to execute it or replace it with your code.
 # Press Double ⇧ to search everywhere for classes, files, tool windows, actions, and settings.
 
+def get_git_revision_short_hash():
+    import subprocess
+    try:
+        return subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
+    except Exception as e:
+        return f"unknown ({e})"
+
+def get_git_remote_url():
+    try:
+        return subprocess.check_output(['git', 'remote', 'get-url', 'origin']).decode().strip()
+    except Exception as e:
+        return f"unknown ({e})"
 
 def trainEval():
     import os
+    from datetime import datetime
     import pandas as pd
     import numpy as np
     import matplotlib.pyplot as plt
+    import pyarrow
+    import fastparquet
+
 
     # Constants (can be adjusted)
     pA_To_nA = 0.001
@@ -28,13 +44,23 @@ def trainEval():
     zoomEnd2 = 1.8
 
     # === CONFIGURATION ===
-    import_folder = "/Users/stefanhallermann/Desktop/"
+    #import_folder = "/Users/stefanhallermann/Desktop/"
     import_folder = "/Volumes/D/tmp/Divya"
     #filename = ("25-05-20-60Hz.xlsx")
-    filename = ("25-05-21-ok6bPAC- 60Hz_.xlsx")
+    filename = ("25-05-21-ok6bPAC-60Hz_.xlsx")
 
-    export_folder = os.path.join(import_folder, "export")
+    # Format: YYYY-MM-DD_HH-MM-SS
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    export_folder = os.path.join(import_folder, f"export_{timestamp}")
     os.makedirs(export_folder, exist_ok=True)
+    export_folder_traces = os.path.join(import_folder, f"export_{timestamp}/traces")
+    os.makedirs(export_folder_traces, exist_ok=True)
+    export_folder_used_input = os.path.join(import_folder, f"export_{timestamp}/used_input")
+    os.makedirs(export_folder_used_input, exist_ok=True)
+
+    with open(os.path.join(export_folder, "git_commit.txt"), "w") as f:
+        f.write(f"Git commit: {commit_hash}\n")
+
 
     # === IMPORT DATA ===
     df = pd.read_excel(os.path.join(import_folder, filename))
@@ -43,14 +69,8 @@ def trainEval():
     stim_signal = df.iloc[:, 1].values
     traces = df.iloc[:, 2:]  # remaining columns = traces (is still a data frame, maybe faster with .values, which returns a "D numpy array, without lables)
 
-    # === STIMULATION DETECTION ===
-    """
-    stim_file = "stimTimeMarker.xlsx"  # replace with your stim marker file
-    stim_col_name = "stim"  # the column containing mostly 0s and occasional 1s
-
-    stim_df = pd.read_excel(os.path.join(import_folder, stim_file))
-    stim_signal = stim_df[stim_col_name].values
-    """
+    df.to_parquet(os.path.join(export_folder_used_input, "my_data.parquet"))
+    # for later import use: df = pd.read_parquet("my_data.parquet")
 
     # Assumes the stim file has the same time base as the main data
     # Find onset times: 0 -> 1 transitions
@@ -155,7 +175,7 @@ def trainEval():
 
         # Tight layout and save
         plt.tight_layout()
-        plt.savefig(os.path.join(export_folder, f"{trace_name}.pdf"))
+        plt.savefig(os.path.join(export_folder_traces, f"{trace_name}.pdf"))
         plt.close()
 
         # Collect results
@@ -171,6 +191,13 @@ def trainEval():
     tmp_df = pd.DataFrame(results_phasic)
     tmp_df.to_excel(os.path.join(export_folder, "results_phasic.xlsx"), index=False)
 
+
+    commit_hash = get_git_revision_short_hash()
+    #print("Git commit:", commit_hash)
+    repo_url = get_git_remote_url()
+    with open(os.path.join(export_folder, "git_version_info.txt"), "w") as f:
+        f.write(f"Repository: {repo_url}\n")
+        f.write(f"Commit: {commit_hash}\n")
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
