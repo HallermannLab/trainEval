@@ -53,7 +53,7 @@ def trainEval():
     #import_folder = "/Users/stefanhallermann/Desktop/"
     import_folder = "/Volumes/D/tmp/Divya"
     #filename = ("25-05-20-60Hz.xlsx")
-    filename = ("25-05-21-ok6bPAC-60Hz_.xlsx")
+    filename = ("25-05-21-ok6bPAC-60Hz.xlsx")
 
     # Format: YYYY-MM-DD_HH-MM-SS
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -74,6 +74,7 @@ def trainEval():
     #print(f"Saved Git info: {repo_url}, commit {commit_hash}")
 
     # === IMPORT DATA ===
+    print("Importing traces... ", end="", flush=True)
     df = pd.read_excel(os.path.join(import_folder, filename))
     time = df.iloc[:, 0].values  # first column = time
     time *= ms_To_s   # 2nd column = stimulation trace
@@ -82,6 +83,7 @@ def trainEval():
 
     df.to_parquet(os.path.join(export_folder_used_input, "my_data.parquet"))
     # for later import use: df = pd.read_parquet("my_data.parquet")
+    print("done")
 
     # Assumes the stim file has the same time base as the main data
     # Find onset times: 0 -> 1 transitions
@@ -119,7 +121,11 @@ def trainEval():
         "stimulus time (s)": list(time_of_stim)
     }
 
+    trace_count = 0
+    print("Analyzing trace:", end="", flush=True)
     for trace_name in traces.columns:
+        trace_count += 1
+        print(f" {trace_count}", end="", flush=True)
         original_y = pA_To_nA * traces[trace_name].values
         y = original_y.copy()
 
@@ -202,6 +208,8 @@ def trainEval():
         results_peak[trace_name] = peak_vals
         results_phasic[trace_name] = np.array(peak_vals) - np.array(base_vals)
         results_charge[trace_name] = charge_vals
+
+    print("done")
 
     # Export analysis results
     tmp_df = pd.DataFrame(results_tonic)
