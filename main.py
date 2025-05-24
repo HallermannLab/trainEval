@@ -58,9 +58,11 @@ def trainEval():
     export_folder_used_input = os.path.join(import_folder, f"export_{timestamp}/used_input")
     os.makedirs(export_folder_used_input, exist_ok=True)
 
-    with open(os.path.join(export_folder, "git_commit.txt"), "w") as f:
-        f.write(f"Git commit: {commit_hash}\n")
-
+    repo_url = get_git_remote_url()
+    commit_hash = get_git_revision_short_hash()
+    with open(os.path.join(export_folder, "git_version_info.txt"), "w") as f:
+        f.write(f"Repository: {repo_url}\n")
+        f.write(f"Commit: {commit_hash}\n")
 
     # === IMPORT DATA ===
     df = pd.read_excel(os.path.join(import_folder, filename))
