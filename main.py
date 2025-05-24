@@ -3,18 +3,22 @@
 # Press ⌃R to execute it or replace it with your code.
 # Press Double ⇧ to search everywhere for classes, files, tool windows, actions, and settings.
 
-def get_git_revision_short_hash():
-    import subprocess
-    try:
-        return subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
-    except Exception as e:
-        return f"unknown ({e})"
+import subprocess
+import os
 
-def get_git_remote_url():
+def get_git_info():
     try:
-        return subprocess.check_output(['git', 'remote', 'get-url', 'origin']).decode().strip()
-    except Exception as e:
-        return f"unknown ({e})"
+        repo_url = subprocess.check_output(['git', 'remote', 'get-url', 'origin']).decode().strip()
+    except Exception:
+        repo_url = "unknown"
+
+    try:
+        commit_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode().strip()
+    except Exception:
+        commit_hash = "unknown"
+
+    return repo_url, commit_hash
+
 
 def trainEval():
     import os
@@ -25,7 +29,6 @@ def trainEval():
     import pyarrow
     import fastparquet
 
-
     # Constants (can be adjusted)
     pA_To_nA = 0.001
     ms_To_s = 0.001
@@ -35,6 +38,9 @@ def trainEval():
     base_end = 0.0 * ms_To_s
     peak_st = 0.5 * ms_To_s
     peak_end = 3.0 * ms_To_s
+    charge_start = 0.0 * ms_To_s
+    charge_end = 15.0  * ms_To_s
+
     trace_base_st = 0  # in seconds
     trace_base_end = 1
 
@@ -58,11 +64,14 @@ def trainEval():
     export_folder_used_input = os.path.join(import_folder, f"export_{timestamp}/used_input")
     os.makedirs(export_folder_used_input, exist_ok=True)
 
-    repo_url = get_git_remote_url()
-    commit_hash = get_git_revision_short_hash()
+    repo_url, commit_hash = get_git_info()
+    # Save to file
+    os.makedirs(export_folder, exist_ok=True)
+
     with open(os.path.join(export_folder, "git_version_info.txt"), "w") as f:
         f.write(f"Repository: {repo_url}\n")
         f.write(f"Commit: {commit_hash}\n")
+    #print(f"Saved Git info: {repo_url}, commit {commit_hash}")
 
     # === IMPORT DATA ===
     df = pd.read_excel(os.path.join(import_folder, filename))
@@ -88,12 +97,9 @@ def trainEval():
     plt.legend()
     plt.savefig(os.path.join(export_folder, f"stimDetect.pdf"))
     plt.close()
-
-    print("Detected stimulation times (s):", time_of_stim)
-
+    #print("Detected stimulation times (s):", time_of_stim)
 
 
-    #results = []
     # for collecting the results
     n_stim = len(time_of_stim)
     results_peak = {
@@ -105,6 +111,10 @@ def trainEval():
         "stimulus time (s)": list(time_of_stim)
     }
     results_tonic = {
+        "stimulus number": list(range(1, n_stim + 1)),
+        "stimulus time (s)": list(time_of_stim)
+    }
+    results_charge = {
         "stimulus number": list(range(1, n_stim + 1)),
         "stimulus time (s)": list(time_of_stim)
     }
@@ -121,6 +131,7 @@ def trainEval():
 
         peak_vals = []
         base_vals = []
+        charge_vals = []
 
         # Stimulus-by-stimulus analysis
         for stim_time in time_of_stim:
@@ -133,9 +144,10 @@ def trainEval():
             interp = np.linspace(0, 1, idx2 - idx1 + 1)
             y[idx1:idx2 + 1] = i1 + interp * (i2 - i1)
 
-            # Calculate base
+            # Calculate base (mean or min in peak interval; )
             base_mask = (time >= stim_time + base_st) & (time <= stim_time + base_end)
-            base_val = (np.mean(y[base_mask]) - trace_base)
+            #base_val = (np.mean(y[base_mask]) - trace_base)
+            base_val = (np.min(y[base_mask]) - trace_base)
             base_vals.append(base_val)
 
             # Calculate peak (min in peak interval)
@@ -143,7 +155,12 @@ def trainEval():
             peak_val = (np.min(y[peak_mask]) - trace_base)
             peak_vals.append(peak_val)
 
-        # Save all three plots in one vertical layout
+            # Calculate charge (trapezoidal integration over the charge interval)
+            charge_mask = (time >= stim_time + charge_start) & (time <= stim_time + charge_end)
+            charge_val = np.trapezoid(y[charge_mask], time[charge_mask])  # result in nA·s
+            charge_vals.append(charge_val)
+
+        # Save all plots in one vertical layout
         fig, axs = plt.subplots(5, 1, figsize=(8, 10), sharex=False)
 
         # 1. Original trace
@@ -181,9 +198,10 @@ def trainEval():
         plt.close()
 
         # Collect results
-        results_tonic[f"{trace_name}_base (nA)"] = base_vals
-        results_peak[f"{trace_name}_peak (nA)"] = peak_vals
-        results_phasic[f"{trace_name}_peak (nA)"] = np.array(peak_vals) - np.array(base_vals)
+        results_tonic[trace_name] = base_vals
+        results_peak[trace_name] = peak_vals
+        results_phasic[trace_name] = np.array(peak_vals) - np.array(base_vals)
+        results_charge[trace_name] = charge_vals
 
     # Export analysis results
     tmp_df = pd.DataFrame(results_tonic)
@@ -192,16 +210,9 @@ def trainEval():
     tmp_df.to_excel(os.path.join(export_folder, "results_peak.xlsx"), index=False)
     tmp_df = pd.DataFrame(results_phasic)
     tmp_df.to_excel(os.path.join(export_folder, "results_phasic.xlsx"), index=False)
+    tmp_df = pd.DataFrame(results_charge)
+    tmp_df.to_excel(os.path.join(export_folder, "results_charge.xlsx"), index=False)
 
-
-    commit_hash = get_git_revision_short_hash()
-    #print("Git commit:", commit_hash)
-    repo_url = get_git_remote_url()
-    with open(os.path.join(export_folder, "git_version_info.txt"), "w") as f:
-        f.write(f"Repository: {repo_url}\n")
-        f.write(f"Commit: {commit_hash}\n")
-
-# Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     trainEval()
 
