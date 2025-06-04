@@ -28,46 +28,63 @@ def trainEval():
     import matplotlib.pyplot as plt
     import pyarrow
     import fastparquet
+    from tkinter import filedialog
+    from tkinter import Tk
 
-    # Constants (can be adjusted)
-    pA_To_nA = 0.001
-    ms_To_s = 0.001
-    blank_st = -0.3 * ms_To_s
-    blank_end = 1.5 * ms_To_s
-    base_st = -0.4 * ms_To_s
-    base_end = 0.0 * ms_To_s
-    peak_st = 0.5 * ms_To_s
-    peak_end = 3.0 * ms_To_s
-    charge_start = 0.0 * ms_To_s
-    charge_end = 15.0  * ms_To_s
+    root = Tk()
+    root.withdraw()  # Hide the GUI window
+    root_folder = filedialog.askdirectory(title="Select root folder which contains the 'in' Folder")
+    import_folder = os.path.join(root_folder, "in")
 
-    trace_base_st = 0  # in seconds
-    trace_base_end = 1
+    # imported parameters - must be in the "in" folder
+    param_file = 'parameters.xlsx'
+    param_values = pd.read_excel(os.path.join(import_folder, param_file), header=None).iloc[:,1].tolist()  # second row (index 1)
 
-    zoomStart1 = 1.73 # in s
-    zoomEnd1  = 1.75
-    zoomStart2 = 1.7  # in s
-    zoomEnd2 = 1.8
+    # === Assign values in order ===
+    (
+        filename,
+        pA_To_nA,
+        ms_To_s,
+        blank_st,
+        blank_end,
+        base_st,
+        base_end,
+        peak_st,
+        peak_end,
+        charge_start,
+        charge_end,
+        trace_base_st,
+        trace_base_end,
+        zoomStart1,
+        zoomEnd1,
+        zoomStart2,
+        zoomEnd2
+    ) = param_values
 
-    # === CONFIGURATION ===
-    #import_folder = "/Users/stefanhallermann/Desktop/"
-    import_folder = "/Volumes/D/tmp/Divya"
-    #filename = ("25-05-20-60Hz.xlsx")
-    filename = ("25-05-21-ok6bPAC-60Hz.xlsx")
+    # Example: print some of the loaded parameters to confirm
+    print("Import folder:", import_folder)
+    print("Filename:", filename)
+
+    blank_st *= ms_To_s
+    blank_end *= ms_To_s
+    base_st *= ms_To_s
+    base_end *= ms_To_s
+    peak_st *= ms_To_s
+    peak_end *= ms_To_s
+    charge_start *= ms_To_s
+    charge_end *= ms_To_s
 
     # Format: YYYY-MM-DD_HH-MM-SS
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    export_folder = os.path.join(import_folder, f"export_{timestamp}")
+    export_folder = os.path.join(root_folder, f"export_{timestamp}")
     os.makedirs(export_folder, exist_ok=True)
-    export_folder_traces = os.path.join(import_folder, f"export_{timestamp}/traces")
+    export_folder_traces = os.path.join(root_folder, f"export_{timestamp}/traces")
     os.makedirs(export_folder_traces, exist_ok=True)
-    export_folder_used_input = os.path.join(import_folder, f"export_{timestamp}/used_input")
+    export_folder_used_input = os.path.join(root_folder, f"export_{timestamp}/used_input")
     os.makedirs(export_folder_used_input, exist_ok=True)
 
+    # save git info
     repo_url, commit_hash = get_git_info()
-    # Save to file
-    os.makedirs(export_folder, exist_ok=True)
-
     with open(os.path.join(export_folder, "git_version_info.txt"), "w") as f:
         f.write(f"Repository: {repo_url}\n")
         f.write(f"Commit: {commit_hash}\n")
@@ -80,13 +97,42 @@ def trainEval():
     time *= ms_To_s   # 2nd column = stimulation trace
     stim_signal = df.iloc[:, 1].values
     traces = df.iloc[:, 2:]  # remaining columns = traces (is still a data frame, maybe faster with .values, which returns a "D numpy array, without lables)
+    print("done!")
 
+    # save used data
     df.to_parquet(os.path.join(export_folder_used_input, "my_data.parquet"))
     # for later import use: df = pd.read_parquet("my_data.parquet")
-    print("done")
 
+    # save used parameters
+    param_names = [
+        "filename",
+        "pA_To_nA",
+        "ms_To_s",
+        "blank_st",
+        "blank_end",
+        "base_st",
+        "base_end",
+        "peak_st",
+        "peak_end",
+        "charge_start",
+        "charge_end",
+        "trace_base_st",
+        "trace_base_end",
+        "zoomStart1",
+        "zoomEnd1",
+        "zoomStart2",
+        "zoomEnd2"
+    ]
+    header = ["import_folder"] + param_names
+    output_values = [import_folder] + param_values
+    df_export = pd.DataFrame([output_values], columns=header)
+    df_export = df_export.T.reset_index()
+    df_export.columns = ["parameter", "value"]
+    df_export.to_excel(os.path.join(export_folder_used_input, "exported_parameters.xlsx"), index=False)
+
+    # find stimulation times
     # Assumes the stim file has the same time base as the main data
-    # Find onset times: 0 -> 1 transitions
+    # Find onset times: 0 -> 50 transitions
     stim_onsets = np.where((stim_signal[:-1] < 25) & (stim_signal[1:] >= 25))[0] + 1
     time_of_stim = time[stim_onsets]
 
@@ -209,7 +255,7 @@ def trainEval():
         results_phasic[trace_name] = np.array(peak_vals) - np.array(base_vals)
         results_charge[trace_name] = charge_vals
 
-    print("done")
+    print(" done!")
 
     # Export analysis results
     tmp_df = pd.DataFrame(results_tonic)
