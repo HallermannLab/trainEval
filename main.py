@@ -31,9 +31,12 @@ def trainEval():
     from tkinter import filedialog
     from tkinter import Tk
 
+    """
     root = Tk()
     root.withdraw()  # Hide the GUI window
     root_folder = filedialog.askdirectory(title="Select root folder which contains the 'in' Folder")
+    """
+    root_folder = "/Users/stefanhallermann/Library/CloudStorage/Dropbox/tmp/Abdelmoneim/300"
     import_folder = os.path.join(root_folder, "in")
 
     # imported parameters - must be in the "in" folder
@@ -43,6 +46,7 @@ def trainEval():
     # === Assign values in order ===
     (
         filename,
+        stim_filename,
         pA_To_nA,
         ms_To_s,
         blank_st,
@@ -64,6 +68,7 @@ def trainEval():
     # Example: print some of the loaded parameters to confirm
     print("Import folder:", import_folder)
     print("Filename:", filename)
+    print("Stimulation Filename:", stim_filename)
 
     blank_st *= ms_To_s
     blank_end *= ms_To_s
@@ -92,20 +97,25 @@ def trainEval():
 
     # === IMPORT DATA ===
     print("Importing traces... ", end="", flush=True)
-    df = pd.read_excel(os.path.join(import_folder, filename))
+
+    #df = pd.read_excel(os.path.join(import_folder, filename))
+
+    df = pd.read_parquet(os.path.join(import_folder, "my_data.parquet"))
+
     time = df.iloc[:, 0].values  # first column = time
-    time *= ms_To_s   # 2nd column = stimulation trace
-    stim_signal = df.iloc[:, 1].values
-    traces = df.iloc[:, 2:]  # remaining columns = traces (is still a data frame, maybe faster with .values, which returns a "D numpy array, without lables)
+    #time *= ms_To_s   # 1nd column = stimulation trace
+    #stim_signal = df.iloc[:, 1].values
+    traces = df.iloc[:, 1:]  # remaining columns = traces (is still a data frame, maybe faster with .values, which returns a "D numpy array, without lables)
     print("done!")
 
     # save used data
-    df.to_parquet(os.path.join(export_folder_used_input, "my_data.parquet"))
-    # for later import use: df = pd.read_parquet("my_data.parquet")
+    # df.to_parquet(os.path.join(export_folder_used_input, "my_data.parquet"))
+    # for later import use: df = pd.read_parquet(os.path.join(import_folder, "my_data.parquet"))
 
     # save used parameters
     param_names = [
         "filename",
+        "stim_filename",
         "pA_To_nA",
         "ms_To_s",
         "blank_st",
@@ -133,9 +143,15 @@ def trainEval():
     # find stimulation times
     # Assumes the stim file has the same time base as the main data
     # Find onset times: 0 -> 50 transitions
-    stim_onsets = np.where((stim_signal[:-1] < 25) & (stim_signal[1:] >= 25))[0] + 1
-    time_of_stim = time[stim_onsets]
+    #stim_onsets = np.where((stim_signal[:-1] < 25) & (stim_signal[1:] >= 25))[0] + 1
+    #time_of_stim = time[stim_onsets]
 
+    #import times of stimulation
+    stim_df = pd.read_excel(os.path.join(import_folder, stim_filename))
+    # Assuming the column is named 'time_of_stim'
+    time_of_stim = stim_df['time_of_stim'].dropna().to_numpy()
+
+    """
     plt.figure()
     plt.plot(time, stim_signal, label="Stimulus Signal")
     plt.scatter(time[stim_onsets], stim_signal[stim_onsets], color='red', label="Detected Onsets")
@@ -146,7 +162,7 @@ def trainEval():
     plt.savefig(os.path.join(export_folder, f"stimDetect.pdf"))
     plt.close()
     #print("Detected stimulation times (s):", time_of_stim)
-
+    """
 
     # for collecting the results
     n_stim = len(time_of_stim)
