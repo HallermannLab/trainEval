@@ -39,7 +39,7 @@ def trainEval():
     root_folder = "/Users/stefanhallermann/Library/CloudStorage/Dropbox/tmp/Abdelmoneim/300"
     import_folder = os.path.join(root_folder, "in")
 
-    # imported parameters - must be in the "in" folder
+    ## imported parameters - must be in the "in" folder
     param_file = 'parameters.xlsx'
     param_values = pd.read_excel(os.path.join(import_folder, param_file), header=None).iloc[:,1].tolist()  # second row (index 1)
 
