@@ -75,7 +75,7 @@ def trainEval():
     charge_end *= ms_To_s
 
     # Format: YYYY-MM-DD_HH-MM-SS
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    timestamp = datetime.now().strftime("%Y-%m-%d___%H-%M-%S")
     export_folder = os.path.join(root_folder, f"export_{timestamp}")
     os.makedirs(export_folder, exist_ok=True)
     export_folder_traces = os.path.join(root_folder, f"export_{timestamp}/traces")
