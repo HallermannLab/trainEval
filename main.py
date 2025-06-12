@@ -1,38 +1,24 @@
-import subprocess
 import os
+from datetime import datetime
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import pyarrow
+from tkinter import filedialog
+from tkinter import Tk
 
-def get_git_info():
-    try:
-        repo_url = subprocess.check_output(['git', 'remote', 'get-url', 'origin']).decode().strip()
-    except Exception:
-        repo_url = "unknown"
-
-    try:
-        commit_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode().strip()
-    except Exception:
-        commit_hash = "unknown"
-
-    return repo_url, commit_hash
+import git_save as myGit
 
 
-def trainEval():
-    import os
-    from datetime import datetime
-    import pandas as pd
-    import numpy as np
-    import matplotlib.pyplot as plt
-    import pyarrow
-    import fastparquet
-    from tkinter import filedialog
-    from tkinter import Tk
+def trainEval(hello=None):
 
     """
     root = Tk()
     root.withdraw()  # Hide the GUI window
-    root_folder = filedialog.askdirectory(title="Select root folder which contains the 'in' Folder")
+    ROOT_FOLDER = filedialog.askdirectory(title="Select root folder which contains the 'in' Folder")
     """
-    root_folder = "/Users/stefanhallermann/Library/CloudStorage/Dropbox/tmp/Abdelmoneim/300"
-    import_folder = os.path.join(root_folder, "in")
+    ROOT_FOLDER = "/Users/stefanhallermann/Library/CloudStorage/Dropbox/tmp/Abdelmoneim/300"
+    import_folder = os.path.join(ROOT_FOLDER, "in")
 
     ## imported parameters - must be in the "in" folder
     param_file = 'parameters.xlsx'
@@ -42,6 +28,7 @@ def trainEval():
     (
         filename,
         stim_filename,
+        output_initials,
         pA_To_nA,
         ms_To_s,
         blank_st,
@@ -65,30 +52,25 @@ def trainEval():
     print("Filename:", filename)
     print("Stimulation Filename:", stim_filename)
 
-    blank_st *= ms_To_s
-    blank_end *= ms_To_s
-    base_st *= ms_To_s
-    base_end *= ms_To_s
-    peak_st *= ms_To_s
-    peak_end *= ms_To_s
-    charge_start *= ms_To_s
-    charge_end *= ms_To_s
-
     # Format: YYYY-MM-DD_HH-MM-SS
     timestamp = datetime.now().strftime("%Y-%m-%d___%H-%M-%S")
-    export_folder = os.path.join(root_folder, f"export_{timestamp}")
-    os.makedirs(export_folder, exist_ok=True)
-    export_folder_traces = os.path.join(root_folder, f"export_{timestamp}/traces")
-    os.makedirs(export_folder_traces, exist_ok=True)
-    export_folder_used_input = os.path.join(root_folder, f"export_{timestamp}/used_input")
-    os.makedirs(export_folder_used_input, exist_ok=True)
+    output_folder = os.path.join(ROOT_FOLDER, f"output_{output_initials}_{timestamp}")
+    os.makedirs(output_folder, exist_ok=True)
 
-    # save git info
-    repo_url, commit_hash = get_git_info()
-    with open(os.path.join(export_folder, "git_version_info.txt"), "w") as f:
-        f.write(f"Repository: {repo_url}\n")
-        f.write(f"Commit: {commit_hash}\n")
-    #print(f"Saved Git info: {repo_url}, commit {commit_hash}")
+    output_folder_used_data_and_code = os.path.join(output_folder, "used_data_and_code")
+    os.makedirs(output_folder_used_data_and_code, exist_ok=True)
+
+    output_folder_traces = os.path.join(output_folder, "traces")
+    os.makedirs(output_folder_traces, exist_ok=True)
+
+    output_folder_results = os.path.join(output_folder, "results")
+    os.makedirs(output_folder_results, exist_ok=True)
+
+    # === GIT SAVE ===
+    # Provide the current script path (only works in .py, not notebooks)
+    script_path = __file__ if '__file__' in globals() else None
+    myGit.save_git_info(output_folder_used_data_and_code, script_path)
+
 
     # === IMPORT DATA ===
     print("Importing traces... ", end="", flush=True)
@@ -99,18 +81,18 @@ def trainEval():
 
     time = df.iloc[:, 0].values  # first column = time
     #time *= ms_To_s   # 1nd column = stimulation trace
-    #stim_signal = df.iloc[:, 1].values
     traces = df.iloc[:, 1:]  # remaining columns = traces (is still a data frame, maybe faster with .values, which returns a "D numpy array, without lables)
     print("done!")
 
     # save used data
-    # df.to_parquet(os.path.join(export_folder_used_input, "my_data.parquet"))
+    df.to_parquet(os.path.join(output_folder_used_data_and_code, "my_data.parquet"))
     # for later import use: df = pd.read_parquet(os.path.join(import_folder, "my_data.parquet"))
 
     # save used parameters
     param_names = [
         "filename",
         "stim_filename",
+        "output_initials",
         "pA_To_nA",
         "ms_To_s",
         "blank_st",
@@ -133,7 +115,7 @@ def trainEval():
     df_export = pd.DataFrame([output_values], columns=header)
     df_export = df_export.T.reset_index()
     df_export.columns = ["parameter", "value"]
-    df_export.to_excel(os.path.join(export_folder_used_input, "exported_parameters.xlsx"), index=False)
+    df_export.to_excel(os.path.join(output_folder_used_data_and_code, "exported_parameters.xlsx"), index=False)
 
     # find stimulation times
     # Assumes the stim file has the same time base as the main data
@@ -146,18 +128,14 @@ def trainEval():
     # Assuming the column is named 'time_of_stim'
     time_of_stim = stim_df['time_of_stim'].dropna().to_numpy()
 
-    """
-    plt.figure()
-    plt.plot(time, stim_signal, label="Stimulus Signal")
-    plt.scatter(time[stim_onsets], stim_signal[stim_onsets], color='red', label="Detected Onsets")
-    plt.xlabel("Time (s)")
-    plt.ylabel("Stim Value")
-    plt.title("Stimulus Detection")
-    plt.legend()
-    plt.savefig(os.path.join(export_folder, f"stimDetect.pdf"))
-    plt.close()
-    #print("Detected stimulation times (s):", time_of_stim)
-    """
+    blank_st *= ms_To_s
+    blank_end *= ms_To_s
+    base_st *= ms_To_s
+    base_end *= ms_To_s
+    peak_st *= ms_To_s
+    peak_end *= ms_To_s
+    charge_start *= ms_To_s
+    charge_end *= ms_To_s
 
     # for collecting the results
     n_stim = len(time_of_stim)
@@ -257,7 +235,7 @@ def trainEval():
 
         # Tight layout and save
         plt.tight_layout()
-        plt.savefig(os.path.join(export_folder_traces, f"{trace_name}.pdf"))
+        plt.savefig(os.path.join(output_folder_traces, f"{trace_name}.pdf"))
         plt.close()
 
         # Collect results
@@ -266,17 +244,18 @@ def trainEval():
         results_phasic[trace_name] = np.array(peak_vals) - np.array(base_vals)
         results_charge[trace_name] = charge_vals
 
+
     print(" done!")
 
     # Export analysis results
     tmp_df = pd.DataFrame(results_tonic)
-    tmp_df.to_excel(os.path.join(export_folder, "results_tonic.xlsx"), index=False)
+    tmp_df.to_excel(os.path.join(output_folder_results, "results_tonic.xlsx"), index=False)
     tmp_df = pd.DataFrame(results_peak)
-    tmp_df.to_excel(os.path.join(export_folder, "results_peak.xlsx"), index=False)
+    tmp_df.to_excel(os.path.join(output_folder_results, "results_peak.xlsx"), index=False)
     tmp_df = pd.DataFrame(results_phasic)
-    tmp_df.to_excel(os.path.join(export_folder, "results_phasic.xlsx"), index=False)
-    tmp_df = pd.DataFrame(results_charge)
-    tmp_df.to_excel(os.path.join(export_folder, "results_charge.xlsx"), index=False)
+    tmp_df.to_excel(os.path.join(output_folder_results, "results_phasic.xlsx"), index=False)
+    #tmp_df = pd.DataFrame(results_charge)
+    #tmp_df.to_excel(os.path.join(output_folder_results, "results_charge.xlsx"), index=False)
 
 if __name__ == '__main__':
     trainEval()
