@@ -8,6 +8,7 @@ from tkinter import filedialog
 from tkinter import Tk
 
 import git_save as myGit
+from trace_viewer import show_two_traces
 
 
 def trainEval(hello=None):
@@ -17,7 +18,7 @@ def trainEval(hello=None):
     root.withdraw()  # Hide the GUI window
     ROOT_FOLDER = filedialog.askdirectory(title="Select root folder which contains the 'in' Folder")
     """
-    ROOT_FOLDER = "/Users/stefanhallermann/Library/CloudStorage/Dropbox/tmp/Abdelmoneim/300"
+    ROOT_FOLDER = "/Users/stefanhallermann/Library/CloudStorage/Dropbox/tmp/Abdelmoneim/100"
     import_folder = os.path.join(ROOT_FOLDER, "in")
 
     ## imported parameters - must be in the "in" folder
@@ -238,11 +239,15 @@ def trainEval(hello=None):
         plt.savefig(os.path.join(output_folder_traces, f"{trace_name}.pdf"))
         plt.close()
 
+        # show_two_traces(time, original_y, y)
+
         # Collect results
         results_tonic[trace_name] = base_vals
         results_peak[trace_name] = peak_vals
         results_phasic[trace_name] = np.array(peak_vals) - np.array(base_vals)
         results_charge[trace_name] = charge_vals
+
+
 
 
     print(" done!")
